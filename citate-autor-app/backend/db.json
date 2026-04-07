@@ -19,6 +19,46 @@
       "id": "4",
       "quote": "Hard days are the best because that’s when champions are made.",
       "author": "Gabby Douglas"
+    },
+    {
+      "id": "5",
+      "author": "Elon Musk",
+      "quote": "If something is important enough, even if the odds are against you, you should still do it."
+    },
+    {
+      "id": "6",
+      "author": "Winston S. Churchill",
+      "quote": "History will be kind to me for I intend to write it."
+    },
+    {
+      "id": "7",
+      "author": "Eleanor Roosevelt",
+      "quote": "The future belongs to those who believe in the beauty of their dreams."
+    },
+    {
+      "id": "8",
+      "author": "Martin Luther King Jr",
+      "quote": "If I cannot do great things. I can do small things in a great way."
+    },
+    {
+      "id": "9",
+      "author": "Albert Einstein",
+      "quote": "Imaginația este mai importantă decât cunoașterea, pentru că ea ne deschide porți către posibilități infinite."
+    },
+    {
+      "id": "10",
+      "author": "Elon Musk",
+      "quote": "Inovația nu este doar o alegere, ci o obligație de a transforma visurile în realitate. Curajul de a risca este primul pas spre descoperiri mărețe."
+    },
+    {
+      "id": "11",
+      "author": "Elon Musk",
+      "quote": "Inovația nu este doar un scop, ci o călătorie continuă spre posibilități nelimitate. Fiecare eșec este doar un pas spre succesul următor."
+    },
+    {
+      "id": "12",
+      "author": "Leonardo da Vinci",
+      "quote": "Cunoașterea este lumina care deschide ușile către misterele lumii, iar curiozitatea este cheia ce le deschide. Fiecare întrebare este o fereastră către un univers nou."
     }
   ],
   "$schema": "./node_modules/json-server/schema.json"

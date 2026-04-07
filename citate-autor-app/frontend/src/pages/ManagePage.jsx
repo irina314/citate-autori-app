@@ -1,29 +1,47 @@
 import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import QuoteCard from "../components/QuoteCard";
-import { getAllQuotes, addQuote, updateQuote, deleteQuote } from "../api/quotesApi";
+import { getAllQuotes, addQuote, updateQuote, deleteQuote, generateQuote } from "../api/quotesApi";
 
 export default function ManagePage() {
-    // Lista de citate afișată în secțiunea de jos a paginii
     const [quotes, setQuotes] = useState([]);
-    
-    // Dacă editingQuote !== null, formularul este în modul EDITARE.
     const [editingQuote, setEditingQuote] = useState(null);
-
-    // Datele controlate ale formularului
     const [formData, setFormData] = useState({ author: "", quote: "" });
-
-    // Mesaj de feedback după operații (succes sau eroare)
     const [feedback, setFeedback] = useState({ message: "", type: "" });
-
     const [loading, setLoading] = useState(true);
 
-    // La montarea componentei, preluăm citatele existente
+    // --- Stări noi pentru generarea AI (Pasul 8) ---
+    const [aiLoading, setAiLoading] = useState(false);
+    const [aiGenerated, setAiGenerated] = useState(false);
+
     useEffect(() => {
         fetchQuotes();
     }, []);
 
-    // --- Funcții de comunicare cu backend-ul ---
+    // --- Debounce pe câmpul autor ---
+    useEffect(() => {
+        if (
+            formData.author.trim().length < 3 || 
+            editingQuote || 
+            formData.quote.trim().length > 0
+        ) return;
+
+        const timer = setTimeout(async () => {
+            setAiLoading(true);
+            try {
+                const result = await generateQuote(formData.author);
+                setFormData(prev => ({ ...prev, quote: result.quote }));
+                setAiGenerated(true);
+            } catch (err) {
+                console.warn("Generare AI eșuată:", err.message);
+            } finally {
+                setAiLoading(false);
+            }
+        }, 3000);
+
+        return () => clearTimeout(timer);
+    }, [formData.author, editingQuote, formData.quote]);
+
     async function fetchQuotes() {
         try {
             const data = await getAllQuotes();
@@ -35,22 +53,22 @@ export default function ManagePage() {
         }
     }
 
-    // --- Handlers formular ---
     function handleChange(e) {
         setFormData(prev => ({ ...prev, [e.target.name]: e.target.value }));
+        if (e.target.name === "quote") {
+            setAiGenerated(false);
+        }
     }
 
     async function handleSubmit(e) {
         e.preventDefault();
         try {
             if (editingQuote) {
-                // MOD EDITARE: trimitem PUT
                 await updateQuote(editingQuote.id, formData);
-                showFeedback("Citatul a fost actualizat cu succes.", "success");
+                showFeedback("Citatul a fost actualizat.", "success");
             } else {
-                // MOD ADĂUGARE: trimitem POST
                 await addQuote(formData);
-                showFeedback("Citatul a fost adăugat cu succes.", "success");
+                showFeedback("Citatul a fost adăugat.", "success");
             }
             resetForm();
             fetchQuotes();
@@ -62,24 +80,25 @@ export default function ManagePage() {
     function handleEdit(quote) {
         setEditingQuote(quote);
         setFormData({ author: quote.author, quote: quote.quote });
+        setAiGenerated(false);
         window.scrollTo({ top: 0, behavior: "smooth" });
     }
 
     async function handleDelete(id) {
-        if (!window.confirm("Ești sigur că vrei să ștergi acest citat?")) return;
+        if (!window.confirm("Ștergi acest citat?")) return;
         try {
             await deleteQuote(id);
-            showFeedback("Citatul a fost șters.", "success");
+            showFeedback("Citat șters.", "success");
             fetchQuotes();
         } catch (err) {
             showFeedback(err.message, "error");
         }
     }
 
-    // --- Funcții utilitare ---
     function resetForm() {
         setEditingQuote(null);
         setFormData({ author: "", quote: "" });
+        setAiGenerated(false);
     }
 
     function showFeedback(message, type) {
@@ -87,110 +106,122 @@ export default function ManagePage() {
         setTimeout(() => setFeedback({ message: "", type: "" }), 3000);
     }
 
-    const inputClass = `w-full px-4 py-2 border rounded-lg text-sm 
-        focus:outline-none focus:ring-2 focus:ring-brand focus:ring-brand 
-        border-gray-300 bg-white text-gray-800 placeholder-gray-400 transition`;
+    const inputClass = `w-full px-4 py-2 border rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500 border-gray-300 bg-white text-gray-800 transition`;
 
     return (
         <div className="min-h-screen bg-gray-50">
-            {/* --- Header --- */}
             <header className="sticky top-0 z-10 bg-white shadow-sm">
                 <div className="max-w-5xl mx-auto px-4 py-4 flex items-center justify-between">
                     <h1 className="text-2xl font-bold text-brand">Administrare citate</h1>
-                    <Link to="/" className="px-4 py-2 text-sm font-medium text-brand border border-brand rounded-lg hover:bg-brand hover:text-white transition-colors duration-200">
-                        ← Înapoi la citate
-                    </Link>
+                    <Link to="/" className="text-brand hover:underline">← Înapoi</Link>
                 </div>
             </header>
 
             <main className="max-w-5xl mx-auto px-4 py-8 space-y-10">
-                {/* --- Banner feedback --- */}
                 {feedback.message && (
-                    <div className={`px-4 py-3 rounded-lg text-sm font-medium transition-opacity duration-300 ${
-                        feedback.type === "success" 
-                        ? "bg-green-50 text-green-700 border border-green-200" 
-                        : "bg-red-50 text-red-700 border border-red-200"
-                    }`}>
-                        {feedback.type === "success" ? "✅ " : "⚠️ "}{feedback.message}
+                    <div className={`px-4 py-3 rounded-lg ${feedback.type === "success" ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"}`}>
+                        {feedback.message}
                     </div>
                 )}
 
-                {/* --- Formular adăugare / editare --- */}
-                <section className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
+                <section className="bg-white rounded-2xl shadow-sm p-6 border border-gray-100">
                     <h2 className={`text-lg font-semibold mb-6 ${editingQuote ? "text-amber-600" : "text-brand"}`}>
                         {editingQuote ? "✎ Editează citatul" : "+ Adaugă citat nou"}
                     </h2>
 
                     <form onSubmit={handleSubmit} className="space-y-4">
                         <div>
-                            <label htmlFor="author" className="block text-sm font-medium text-gray-700 mb-1">Autor</label>
+                            <label className="block text-sm font-medium text-gray-700 mb-1">Autor</label>
                             <input
-                                id="author"
                                 name="author"
                                 type="text"
                                 value={formData.author}
                                 onChange={handleChange}
-                                placeholder="ex. Marcus Aurelius"
+                                placeholder="ex. Albert Einstein"
                                 required
                                 className={inputClass}
                             />
                         </div>
+
+                        {/* --- Secțiunea Citat (Actualizată conform Pasului 8.6) --- */}
                         <div>
-                            <label htmlFor="quote" className="block text-sm font-medium text-gray-700 mb-1">Citat</label>
+                            <div className="flex items-center justify-between mb-1">
+                                <label htmlFor="quote" className="block text-sm font-medium text-gray-700">
+                                    Citat
+                                </label>
+
+                                {aiLoading && (
+                                    <span className="text-xs text-indigo-500 flex items-center gap-1 animate-pulse">
+                                        <span>⚡</span> AI generează citatul...
+                                    </span>
+                                )}
+
+                                {aiGenerated && !aiLoading && (
+                                    <span className="text-xs bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full border border-indigo-200">
+                                        ✨ Generat de AI
+                                    </span>
+                                )}
+                            </div>
+
                             <textarea
                                 id="quote"
                                 name="quote"
                                 value={formData.quote}
                                 onChange={handleChange}
-                                placeholder="Introduceți citatul..."
+                                placeholder={aiLoading 
+                                    ? "Se generează citatul..." 
+                                    : "Introduceți citatul sau așteptați generarea automată..."}
                                 rows={4}
+                                className={`${inputClass} resize-none transition-all ${
+                                    aiLoading ? "bg-indigo-50 border-indigo-200" : ""
+                                }`}
                                 required
-                                className={`${inputClass} resize-none`}
                             />
+
+                            <div className="flex justify-between mt-1 items-start">
+                                <div className="flex flex-col gap-1">
+                                    {aiGenerated && !aiLoading && (
+                                        <p className="text-xs text-gray-400 italic">
+                                            Δ Citat sugerat de AI – verificați autenticitatea înainte de salvare.
+                                        </p>
+                                    )}
+                                </div>
+                                <span className={`text-xs ml-auto flex-shrink-0 ${formData.quote.length > 450 ? "text-red-400" : "text-gray-400"}`}>
+                                    {formData.quote.length}/500
+                                </span>
+                            </div>
                         </div>
 
-                        <div className="flex gap-3 pt-2">
+                        <div className="flex gap-3">
                             <button
                                 type="submit"
-                                className={`flex-1 py-2.5 text-sm font-semibold text-white rounded-lg transition-colors duration-200 ${
-                                    editingQuote ? "bg-amber-500 hover:bg-amber-600" : "bg-brand hover:bg-brand-dark"
+                                disabled={aiLoading}
+                                className={`flex-1 py-2.5 text-sm font-semibold text-white rounded-lg transition-colors ${
+                                    aiLoading ? "bg-gray-400" : editingQuote ? "bg-amber-500 hover:bg-amber-600" : "bg-brand hover:bg-brand-dark"
                                 }`}
                             >
-                                {editingQuote ? "💾 Salvează modificările" : "➕ Adaugă citat"}
+                                {aiLoading ? "Se generează..." : editingQuote ? "Salvează" : "Adaugă"}
                             </button>
                             {editingQuote && (
-                                <button
-                                    type="button"
-                                    onClick={resetForm}
-                                    className="flex-1 py-2.5 text-sm font-semibold text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors duration-200"
-                                >
-                                    × Anulează
+                                <button type="button" onClick={resetForm} className="px-6 py-2.5 text-sm font-semibold text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200">
+                                    Anulează
                                 </button>
                             )}
                         </div>
                     </form>
                 </section>
 
-                {/* --- Lista de citate existente --- */}
+                {/* --- Secțiunea de listare --- */}
                 <section>
                     <h2 className="text-lg font-semibold text-gray-700 mb-4">
-                        Citate existente
-                        <span className="ml-2 text-sm font-normal text-gray-400">({quotes.length})</span>
+                        Citate existente ({quotes.length})
                     </h2>
-
                     {loading ? (
-                        <p className="text-center text-brand animate-pulse py-10">Se încarcă...</p>
-                    ) : quotes.length === 0 ? (
-                        <p className="text-center text-gray-400 py-10">Nu există citate. Adaugă primul folosind formularul de mai sus.</p>
+                        <p className="text-center py-10 animate-pulse text-brand">Se încarcă...</p>
                     ) : (
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                             {quotes.map(q => (
-                                <QuoteCard 
-                                    key={q.id} 
-                                    quote={q} 
-                                    onEdit={handleEdit} 
-                                    onDelete={handleDelete} 
-                                />
+                                <QuoteCard key={q.id} quote={q} onEdit={handleEdit} onDelete={handleDelete} />
                             ))}
                         </div>
                     )}

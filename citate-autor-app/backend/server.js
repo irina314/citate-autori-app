@@ -1,67 +1,110 @@
+require("dotenv").config();
 const express = require("express");
 const cors = require("cors");
-const Joi = require("joi"); // Importăm Joi pentru validare [cite: 161]
+const Joi = require("joi");
+const OpenAI = require("openai");
+
 const app = express();
+const port = 5000;
+const JSON_SERVER_URL = "http://localhost:3000/quotes"; // Asigură-te că aceasta este definită!
+
+// Inițializăm clientul OpenAI
+const openai = new OpenAI({
+  baseURL: "https://models.inference.ai.azure.com",
+  apiKey: process.env.GITHUB_TOKEN,
+});
 
 app.use(cors());
 app.use(express.json());
 
-const JSON_SERVER_URL = "http://localhost:3000/quotes";
-
-// Middleware: verificăm dacă ID-ul este un număr valid 
+// --- MIDDLEWARE ȘI VALIDARE (Necesar pentru rutele de mai jos) ---
 const validateId = (req, res, next) => {
-    if (isNaN(req.params.id)) {
-        return res.status(400).json({ error: "Invalid ID format" }); // 
+    if (isNaN(req.params.id) && typeof req.params.id !== 'string') {
+        return res.status(400).json({ error: "ID invalid" });
     }
-    next(); // Dacă e OK, mergem mai departe [cite: 173]
+    next();
 };
 
-// Schema Joi pentru validarea citatelor [cite: 174]
 const quoteSchema = Joi.object({
-    id: Joi.string().optional(), // Permitem ID-ul pentru editare [cite: 308]
-    author: Joi.string().min(2).required(),
-    quote: Joi.string().min(5).required()
-});
-// API route placeholder [cite: 179]
-app.get("/", (req, res) => {
-    res.send("Printing Quotes API is running..."); // [cite: 182]
+    author: Joi.string().min(3).required(),
+    quote: Joi.string().min(10).required(),
+    imageUrl: Joi.string().allow("")
 });
 
-// Extragem citatele [cite: 183]
+// --- RUTE AI (PASUL 8 și 9) ---
+
+// Pasul 8.4: Generare citat [cite: 53]
+app.post("/api/quotes/generate-quote", async (req, res) => {
+    const { author } = req.body;
+    if (!author || !author.trim()) {
+        return res.status(400).json({ error: "Numele autorului este obligatoriu." });
+    }
+
+    try {
+        const completion = await openai.chat.completions.create({
+            model: "gpt-4o-mini",
+            messages: [
+                { role: "system", content: "Ești un cunoscator în literatură și filosofie. Generezi citate scurte, inspiraționale și autentice. Răspunzi DOAR cu citatul, fără ghilimele, fără numele autorului, fără explicații suplimentare. Maxim 2 propoziții." },
+                { role: "user", content: `Scrie un citat autentic specific lui ${author.trim()}. Dacă autorul are citate celebre cunoscute, folosește unul dintre ele. Dacă nu, generează unul în stilul și filosofia sa.` }
+            ],
+            max_tokens: 150,
+            temperature: 0.7,
+        });
+        const generatedQuote = completion.choices[0].message.content.trim();
+        res.status(200).json({ quote: generatedQuote });
+    } catch (error) {
+        res.status(500).json({ error: "Nu s-a putut genera citatul." });
+    }
+});
+
+// Pasul 9.1: Informații autor pentru Tooltip 
+app.post("/api/quotes/author-info", async (req, res) => {
+    const { author } = req.body;
+    if (!author || !author.trim()) return res.status(400).json({ error: "Autor obligatoriu" });
+
+    try {
+        const completion = await openai.chat.completions.create({
+            model: "gpt-4o-mini",
+            messages: [
+                { role: "system", content: "Eşti un asistent concis. Răspunzi doar în limba română. EXACT două propoziții scurte despre autor (domeniu, perioadă, contribuţie). Fără introduceri." },
+                { role: "user", content: `Descrie pe ${author.trim()} în exact 2 propoziții.` }
+            ],
+            max_tokens: 120,
+            temperature: 0.5,
+        });
+        const info = completion.choices[0].message.content.trim();
+        res.status(200).json({ info });
+    } catch (error) {
+        res.status(500).json({ error: "Nu s-au putut prelua informațiile." });
+    }
+});
+
+// --- RUTE CRUD (Definite DUPĂ rutele specifice AI) [cite: 51] ---
+
 app.get("/api/quotes", async (req, res) => {
     try {
         const response = await fetch(JSON_SERVER_URL);
         const data = await response.json();
         res.json(data);
     } catch (error) {
-        res.status(500).json({ error: "Failed to fetch quotes" }); // [cite: 189]
+        res.status(500).json({ error: "Failed to fetch quotes" });
     }
 });
 
-/// Ruta GET pentru a prelua un singur citat după ID [cite: 293]
 app.get("/api/quotes/:id", validateId, async (req, res) => {
     try {
-        const quoteId = req.params.id; // [cite: 295]
-        const response = await fetch(`${JSON_SERVER_URL}/${quoteId}`); // [cite: 296]
-
-        if (!response.ok) {
-            return res.status(404).json({ error: "Quote not found" }); // [cite: 299]
-        }
-
-        const quote = await response.json(); // [cite: 296]
-        res.json(quote); // [cite: 300]
+        const response = await fetch(`${JSON_SERVER_URL}/${req.params.id}`);
+        if (!response.ok) return res.status(404).json({ error: "Quote not found" });
+        const quote = await response.json();
+        res.json(quote);
     } catch (error) {
-        console.error("Error fetching quote:", error); // 
-        res.status(500).json({ error: "Failed to fetch quote" }); // [cite: 303]
+        res.status(500).json({ error: "Failed to fetch quote" });
     }
 });
 
-// Adăugăm un citat nou (cu VALIDARE) [cite: 192]
 app.post("/api/quotes", async (req, res) => {
-    const { error } = quoteSchema.validate(req.body); // Verificăm datele primite [cite: 194]
-    if (error) {
-        return res.status(400).json({ error: error.details[0].message }); // [cite: 197]
-    }
+    const { error } = quoteSchema.validate(req.body);
+    if (error) return res.status(400).json({ error: error.details[0].message });
 
     try {
         const response = await fetch(JSON_SERVER_URL);
@@ -75,70 +118,41 @@ app.post("/api/quotes", async (req, res) => {
             body: JSON.stringify(newQuote),
         });
         const data = await postResponse.json();
-        res.status(postResponse.status).json(data);
+        res.status(201).json(data);
     } catch (error) {
         res.status(500).json({ error: "Failed to add quote" });
     }
 });
 
-// Actualizăm un citat (cu validare ID și text) [cite: 220]
 app.put("/api/quotes/:id", validateId, async (req, res) => {
     const { error } = quoteSchema.validate(req.body);
-    if (error) {
-        return res.status(400).json({ error: error.details[0].message });
-    }
+    if (error) return res.status(400).json({ error: error.details[0].message });
 
     try {
-        const quoteId = req.params.id;
-        const updatedQuote = { id: quoteId, ...req.body };
-        const response = await fetch(`${JSON_SERVER_URL}/${quoteId}`, {
+        const response = await fetch(`${JSON_SERVER_URL}/${req.params.id}`, {
             method: "PUT",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(updatedQuote),
+            body: JSON.stringify({ id: req.params.id, ...req.body }),
         });
-
-        if (!response.ok) {
-            return res.status(404).json({ error: "Quote not found" }); // [cite: 236]
-        }
+        if (!response.ok) return res.status(404).json({ error: "Quote not found" });
         const data = await response.json();
-        res.status(response.status).json(data);
+        res.json(data);
     } catch (error) {
         res.status(500).json({ error: "Failed to update quote" });
     }
 });
 
-// Ștergem un citat [cite: 247]
 app.delete("/api/quotes/:id", validateId, async (req, res) => {
     try {
-        const quoteId = req.params.id;
-        const response = await fetch(`${JSON_SERVER_URL}/${quoteId}`, { method: "DELETE" });
-
-        if (!response.ok) {
-            return res.status(404).json({ error: "Quote not found" }); // [cite: 257]
-        }
-        res.status(200).json({ message: "Quote deleted successfully" }); // [cite: 258]
-    } catch (error) {
-        res.status(500).json({ error: "Failed to delete quote" });
-    }
-});
-// Ruta DELETE pentru a șterge un citat după ID
-app.delete("/api/quotes/:id", validateId, async (req, res) => {
-    try {
-        const quoteId = req.params.id;
-        const response = await fetch(`${JSON_SERVER_URL}/${quoteId}`, {
-            method: "DELETE",
-        });
-
-        if (!response.ok) {
-            return res.status(404).json({ error: "Quote not found" });
-        }
-
-        res.json({ message: "Quote deleted successfully" });
+        const response = await fetch(`${JSON_SERVER_URL}/${req.params.id}`, { method: "DELETE" });
+        if (!response.ok) return res.status(404).json({ error: "Quote not found" });
+        res.status(200).json({ message: "Quote deleted successfully" });
     } catch (error) {
         res.status(500).json({ error: "Failed to delete quote" });
     }
 });
 
-const port = 5000;
-app.listen(port, () => console.log(`Server running on http://localhost:${port}`));
-console.log("Server restarted!");
+app.listen(port, () => {
+    console.log(`Server running on http://localhost:${port}`);
+    console.log("Server restarted!");
+});

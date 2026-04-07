@@ -14,9 +14,11 @@
   "type": "commonjs",
   "dependencies": {
     "cors": "^2.8.6",
+    "dotenv": "^17.4.1",
     "express": "^5.2.1",
     "joi": "^18.0.2",
     "json-server": "^1.0.0-beta.12",
+    "openai": "^6.33.0",
     "react-router-dom": "^7.13.1"
   },
   "devDependencies": {

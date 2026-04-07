@@ -1,8 +1,7 @@
 // URL-ul de bază al backend-ului Express.
 // Toate cererile trec prin Express -> proxy -> json-server.
 // React nu comunică niciodată direct cu json-server (:3000).
-const BASE_URL = "http://localhost:5000/api/quotes";
-
+const BASE_URL = "/api/quotes";
 // ---------------------------------------------------------
 // GET /api/quotes - preia toate citatele
 // Folosit în QuotesPage și ManagePage la montarea componentei.
@@ -55,4 +54,24 @@ export async function updateQuote(id, quoteData) {
 export async function deleteQuote(id) {
     const response = await fetch(`${BASE_URL}/${id}`, { method: "DELETE" });
     if (!response.ok) throw new Error("Nu s-a putut șterge citatul.");
+}
+// POST /api/quotes/generate-quote
+// Trimite numele autorului și primește un citat generat de OpenAI.
+export async function generateQuote(author) {
+  const response = await fetch(
+    // Construim URL-ul corect față de BASE_URL = /api/quotes
+    `${BASE_URL.replace("/quotes", "")}/quotes/generate-quote`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ author }),
+    }
+  );
+
+  if (!response.ok) {
+    const err = await response.json();
+    throw new Error(err.error || "Nu s-a putut genera citatul.");
+  }
+
+  return response.json(); // textul generat
 }
